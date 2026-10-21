@@ -11,7 +11,6 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, OrdinalEncoder, StandardScaler
 from sklearn.pipeline import make_pipeline
 
-
 diabetes = pd.read_csv("diabetes_dataset.csv")
 
 num_features = diabetes.select_dtypes(include=[np.number]).columns
@@ -57,28 +56,8 @@ y_proba = model.predict_proba(X_val)[:, 1]
 threshold = 0.5
 y_pred_t = (y_proba >= threshold).astype(int)
 
-cm = confusion_matrix(X_val, y_pred_t)
 
-accuracy = accuracy_score(X_val, y_pred_t)
+corr_matrix = diabetes.corr()
 
-precision = precision_score(X_val, y_pred_t)
-
-recall = recall_score(X_val, y_pred_t)
-
-tn, fp, fn, tp = cm.ravel()
-
-specificity = tn / (tn+fp)
-
-npv = tn / (tn+fn)
-
-f1 = f1_score(X_val, y_pred_t)
-print(accuracy, precision, recall, specificity, npv, f1)
-
-
-fpr, tpr, thresholds = metrics.roc_curve(X_val, y_proba)
-roc_auc = metrics.auc(fpr, tpr)
-display = metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=roc_auc,
-                                  name='example estimator')
-display.plot()
-plt.show()
+print(corr_matrix["Diabetes_012"].sort_values(ascending=False))
 
