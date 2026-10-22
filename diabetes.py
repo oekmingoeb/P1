@@ -23,8 +23,14 @@ num_features = diabetes.select_dtypes(include=[np.number]).columns
 
 diabetes.hist(bins=50, figsize=(20,15))
 
-standard_scaler = StandardScaler()
-scaled_data = standard_scaler.fit_transform(diabetes[num_features])
+scaler = StandardScaler()
+
+# Tilpas scaleren på træningsdata og transformer dem
+X_train_scaled = scaler.fit_transform(X_train)
+
+# Transformer validering og test vha. parametrene fra X_train (uden at kalde fit)
+X_val_scaled = scaler.transform(X_val)
+X_test_scaled = scaler.transform(X_test)
 
 scaled_df = pd.DataFrame(scaled_data, columns=diabetes[num_features].columns)
 
@@ -60,4 +66,3 @@ y_pred_t = (y_proba >= threshold).astype(int)
 corr_matrix = diabetes.corr()
 
 print(corr_matrix["Diabetes_012"].sort_values(ascending=False))
-
