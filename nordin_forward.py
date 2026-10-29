@@ -1,24 +1,46 @@
 from time import time
+from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.feature_selection import SelectFromModel, SequentialFeatureSelector
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import RidgeCV
+from sklearn.linear_model import RidgeClassifierCV
 from sklearn.metrics import (
     accuracy_score,
+    auc,
     classification_report,
     confusion_matrix,
     f1_score,
+    roc_curve,
 )
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, RobustScaler
+from imblearn.over_sampling import SMOTENC
 
-diabetes = pd.read_csv("diabetes_dataset.csv")
+diabetes = pd.read_csv(Path(__file__).resolve().with_name("diabetes_dataset.csv"))
+target_column = "Diabetes_012"
+samples_per_class = 4500
+class_counts = diabetes[target_column].value_counts()
+if class_counts.min() < samples_per_class:
+    raise ValueError(
+        f"Cannot sample {samples_per_class} rows per class; "
+        f"available counts are {class_counts.sort_index().to_dict()}."
+    )
+diabetes = (
+    diabetes.groupby(target_column, group_keys=False)
+    .sample(n=samples_per_class, random_state=42)
+    .sample(frac=1, random_state=42)
+    .reset_index(drop=True)
+)
+print(
+    "Balanced dataset class counts:",
+    diabetes[target_column].value_counts().sort_index().to_dict(),
+)
 
-X = diabetes.drop(columns=["Diabetes_012"])
-y = diabetes["Diabetes_012"]
+X = diabetes.drop(columns=[target_column])
+y = diabetes[target_column]
 
 X_temp, X_test, y_temp, y_test = train_test_split(
     X, y, test_size=0.15, random_state=42, stratify=y
@@ -28,7 +50,16 @@ X_train, X_val, y_train, y_val = train_test_split(
     X_temp, y_temp, test_size=0.15 / 0.85, random_state=42, stratify=y_temp
 )
 
-log_columns = X_train.columns[X_train.nunique() > 2]
+# SMOTENC handles mixed data: binary indicators and ordinal ratings are
+# categorical, while continuous measurements are interpolated numerically.
+ordinal_columns = [
+    column for column in ("Age", "GenHlth", "Education", "Income")
+    if column in X_train.columns
+]
+binary_columns = [column for column in X_train.columns if X_train[column].nunique() == 2]
+categorical_columns = list(dict.fromkeys(binary_columns + ordinal_columns))
+# Do not log-transform ordinal codes; keep their ordered category values intact.
+log_columns = X_train.columns[(X_train.nunique() > 2) & ~X_train.columns.isin(ordinal_columns)]
 X_train_log = X_train.copy()
 X_val_log = X_val.copy()
 X_test_log = X_test.copy()
@@ -41,6 +72,25 @@ X_train_scaled = scaler.fit_transform(X_train_log)
 X_val_scaled = scaler.transform(X_val_log)
 X_test_scaled = scaler.transform(X_test_log)
 
+# Scale before oversampling so neighbor distances are not dominated by
+# features with larger numeric ranges.
+class_counts = y_train.value_counts()
+if class_counts.nunique() > 1:
+    if not categorical_columns:
+        raise ValueError("SMOTENC requires at least one categorical feature.")
+    if class_counts.min() < 2:
+        raise ValueError("SMOTENC requires at least two training examples in every class.")
+    smote = SMOTENC(
+        categorical_features=[X_train.columns.get_loc(column) for column in categorical_columns],
+        categorical_encoder=OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+        random_state=42,
+        k_neighbors=min(5, int(class_counts.min()) - 1),
+    )
+    X_train_scaled, y_resampled = smote.fit_resample(X_train_scaled, y_train)
+    y_train = pd.Series(y_resampled, name=y_train.name)
+else:
+    print("Skipping SMOTENC because the training classes are already balanced.")
+
 feature_names = np.array(X.columns)
 
 model = KNeighborsClassifier(n_neighbors=5, n_jobs=-1)
@@ -50,8 +100,8 @@ y_pred = model.predict(X_val_scaled)
 print(confusion_matrix(y_val, y_pred))
 print(classification_report(y_val, y_pred))
 
-ridge = RidgeCV(alphas=np.logspace(-6, 6, num=5)).fit(X_train_scaled, y_train)
-importance = np.abs(ridge.coef_)
+ridge = RidgeClassifierCV(alphas=np.logspace(-6, 6, num=5)).fit(X_train_scaled, y_train)
+importance = np.mean(np.abs(ridge.coef_), axis=0)
 
 plt.figure(figsize=(12, 6))
 plt.bar(x=feature_names, height=importance)
@@ -60,7 +110,7 @@ plt.xticks(rotation=90)
 plt.tight_layout()
 #plt.show()
 
-threshold = np.sort(importance)[-3] + 0.01
+threshold = np.sort(importance)[-min(3, len(importance))]
 
 tic = time()
 sfm = SelectFromModel(ridge, threshold=threshold, prefit=True)
@@ -75,7 +125,12 @@ y_train_sample = y_train.iloc[sample_idx]
 
 tic_fwd = time()
 sfs_forward = SequentialFeatureSelector(
-    ridge, n_features_to_select=5, direction="forward", cv=3, n_jobs=-1
+    ridge,
+    n_features_to_select=min(5, X_train_scaled.shape[1]),
+    direction="forward",
+    scoring="f1_macro",
+    cv=3,
+    n_jobs=-1,
 ).fit(X_train_sample, y_train_sample)
 print(
     f"Features selected by forward sequential selection: {feature_names[sfs_forward.get_support()]}"
@@ -117,8 +172,10 @@ def make_forest():
 # Hver kombination: (navn på model, funktion der laver modellen, feature-sæt)
 experiments = [
     ("KNN", make_knn, "Alle features"),
+    ("KNN", make_knn, "SelectFromModel"),
     ("KNN", make_knn, "Forward (SFS)"),
     ("RandomForest", make_forest, "Alle features"),
+    ("RandomForest", make_forest, "SelectFromModel"),
     ("RandomForest", make_forest, "Forward (SFS)"),
 ]
 
@@ -149,6 +206,24 @@ print(f"Features: {feature_names[best_mask]}")
 
 # Vis valideringsrapporten for vinderen, så du kan se recall for hver klasse
 print(classification_report(y_val, final_model.predict(X_val_scaled[:, best_mask])))
+
+# One-vs-rest ROC curves and AUC values for each class.
+y_val_scores = final_model.predict_proba(X_val_scaled[:, best_mask])
+plt.figure(figsize=(8, 6))
+for class_index, class_label in enumerate(final_model.classes_):
+    y_val_binary = (y_val == class_label).astype(int)
+    fpr, tpr, _ = roc_curve(y_val_binary, y_val_scores[:, class_index])
+    class_auc = auc(fpr, tpr)
+    plt.plot(fpr, tpr, label=f"Class {class_label} (AUC = {class_auc:.3f})")
+
+plt.plot([0, 1], [0, 1], "k--", label="Chance")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("One-vs-rest ROC curves (validation data)")
+plt.legend(loc="lower right")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
 
 
 

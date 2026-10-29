@@ -19,6 +19,16 @@ num_features = diabetes.select_dtypes(include=[np.number]).columns
 
 #print(diabetes.head)
 #print(diabetes.info)
+
+duplicate_rows = diabetes[diabetes.duplicated(keep=False)]
+print("Number of unique duplicated rows:", len(duplicate_rows.drop_duplicates()))
+duplicate_counts = duplicate_rows.value_counts(dropna=False)
+if not duplicate_counts.empty:
+	print("Unique duplicate with the most occurrences:")
+	print(duplicate_counts.head(1).rename("occurrences").reset_index())
+#remove duplicates
+diabetes = diabetes.drop_duplicates()
+
 # Compare feature distributions, applying log1p only to non-binary features.
 features = diabetes.drop(columns="Diabetes_012").copy()
 numeric_columns = features.select_dtypes(include=[np.number]).columns
@@ -81,4 +91,15 @@ for ax, (chart_title, chart_features) in zip(axes, scaled_features.items()):
 
 fig.tight_layout(rect=(0, 0, 1, 0.93))
 
+# Compare the BMI distribution with its log-transformed distribution.
+bmi_values = diabetes["BMI"].dropna()
+fig_bmi, bmi_axes = plt.subplots(1, 2, figsize=(12, 5))
+bmi_axes[0].hist(bmi_values, bins=30, color="steelblue", edgecolor="white")
+bmi_axes[0].set(title="BMI distribution", xlabel="BMI", ylabel="Frequency")
+bmi_axes[1].hist(np.log1p(bmi_values), bins=30, color="darkorange", edgecolor="white")
+bmi_axes[1].set(title="Log-transformed BMI distribution", xlabel="log1p(BMI)", ylabel="Frequency")
+fig_bmi.tight_layout()
+
 plt.show()
+
+
