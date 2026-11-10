@@ -34,7 +34,9 @@ def compute_feature_selection(
     ridge = RidgeClassifierCV(alphas=np.logspace(-6, 6, num=5)).fit(
         X_train_scaled, y_train
     )
-    importance = np.mean(np.abs(ridge.coef_), axis=0)
+    importance = np.abs(ridge.coef_)
+    if importance.ndim > 1:
+        importance = importance.mean(axis=0)
     threshold = np.sort(importance)[-min(3, len(importance))]
 
     sfm = SelectFromModel(ridge, threshold=threshold, prefit=True)
@@ -78,7 +80,7 @@ def build_hyperparameter_searches():
                     "C": [0.01, 0.1, 1, 10, 100],
                     "class_weight": [None, "balanced"],
                 },
-                scoring="f1_micro",
+                scoring="f1_macro",
                 cv=search_cv,
                 n_jobs=-1,
             ),
@@ -92,7 +94,7 @@ def build_hyperparameter_searches():
                     "class_weight": [None, "balanced"],
                 },
                 n_iter=8,
-                scoring="f1_micro",
+                scoring="f1_macro",
                 cv=search_cv,
                 n_jobs=-1,
                 random_state=42,
@@ -107,7 +109,7 @@ def build_hyperparameter_searches():
                     "weights": ["uniform", "distance"],
                     "p": [1, 2],
                 },
-                scoring="f1_micro",
+                scoring="f1_macro",
                 cv=search_cv,
                 n_jobs=-1,
             ),
@@ -122,7 +124,7 @@ def build_hyperparameter_searches():
                     "p": [1, 2],
                 },
                 n_iter=8,
-                scoring="f1_micro",
+                scoring="f1_macro",
                 cv=search_cv,
                 n_jobs=-1,
                 random_state=42,
@@ -139,7 +141,7 @@ def build_hyperparameter_searches():
                     "max_depth": [None, 15, 20, 30, 40, 50],
                     "min_samples_leaf": [10, 20, 30, 40, 50],
                 },
-                scoring="f1_micro",
+                scoring="f1_macro",
                 cv=search_cv,
                 n_jobs=-1,
             ),
@@ -156,7 +158,7 @@ def build_hyperparameter_searches():
                     "min_samples_leaf": [10, 20, 30, 40, 50],
                 },
                 n_iter=8,
-                scoring="f1_micro",
+                scoring="f1_macro",
                 cv=search_cv,
                 n_jobs=-1,
                 random_state=42,

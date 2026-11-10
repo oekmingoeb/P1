@@ -9,12 +9,23 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, RobustScaler
 
 TARGET_COLUMN = "Diabetes_012"
+PREDIABETES_LABEL = 1
 
 
 def load_diabetes_dataset(dataset_path: str | Path | None = None) -> pd.DataFrame:
     if dataset_path is None:
         dataset_path = Path(__file__).resolve().with_name("diabetes_dataset.csv")
     return pd.read_csv(dataset_path)
+
+
+def remove_prediabetes(
+    diabetes: pd.DataFrame,
+    target_column: str = TARGET_COLUMN,
+    prediabetes_label: int = PREDIABETES_LABEL,
+) -> pd.DataFrame:
+    filtered = diabetes.loc[diabetes[target_column] != prediabetes_label].copy()
+    print(f"Removed {(diabetes[target_column] == prediabetes_label).sum()} prediabetes rows.")
+    return filtered
 
 
 def balance_dataset(

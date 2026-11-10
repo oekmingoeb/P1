@@ -11,6 +11,7 @@ from data_preparation import (
     identify_feature_types,
     load_diabetes_dataset,
     oversample_minority_classes,
+    remove_prediabetes,
     scale_features,
     split_dataset,
     transform_log_features,
@@ -28,7 +29,7 @@ RUN_TEST = False
 
 def main():
     diabetes = load_diabetes_dataset()
-    diabetes = balance_dataset(diabetes)
+    diabetes = remove_prediabetes(diabetes)
 
     X, y, X_train, X_val, X_test, y_train, y_val, y_test = split_dataset(diabetes)
     categorical_columns, log_columns = identify_feature_types(X_train)
@@ -37,9 +38,6 @@ def main():
     )
     X_train_scaled, X_val_scaled, X_test_scaled, _ = scale_features(
         X_train_log, X_val_log, X_test_log
-    )
-    X_train_scaled, y_train = oversample_minority_classes(
-        X_train_scaled, y_train, X_train, categorical_columns
     )
 
     feature_names = np.array(X.columns)
