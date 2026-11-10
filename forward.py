@@ -98,11 +98,12 @@ def make_forest():
     # så modellen ikke bare gætter "rask" hele tiden.
     # min_samples_leaf=20 forhindrer træerne i at lære enkeltpersoner udenad.
     return RandomForestClassifier(
-        n_estimators=200,
-        min_samples_leaf=20,
+        n_estimators=300,
+        min_samples_leaf=50,
         class_weight="balanced",
         n_jobs=-1,
         random_state=42,
+        #max_depth=100
     )
 
 
