@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -16,6 +13,18 @@ from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
 
 TARGET_COLUMN = "Diabetes_012"
 
+plt.rcParams.update(
+    {
+        "axes.labelsize": 12,
+        "axes.titlesize": 14,
+        "xtick.labelsize": 11,
+        "ytick.labelsize": 11,
+        "legend.fontsize": 11,
+        "legend.title_fontsize": 12,
+        "figure.titlesize": 15,
+    }
+)
+
 
 def load_diabetes_data(path: str | Path | None = None) -> pd.DataFrame:
     if path is None:
@@ -26,7 +35,9 @@ def load_diabetes_data(path: str | Path | None = None) -> pd.DataFrame:
 def remove_duplicate_rows(diabetes: pd.DataFrame) -> pd.DataFrame:
     print(diabetes.head)
     print(diabetes.info)
-    print(diabetes.duplicated(keep=False).sum())
+
+    features = diabetes.drop(columns=["Diabetes_012"]).copy()
+    print("Dublicates", features.duplicated(keep=False).sum())
 
     duplicate_rows = diabetes[diabetes.duplicated(keep=False)]
     print("Number of unique duplicated rows:", len(duplicate_rows.drop_duplicates()))
@@ -98,7 +109,7 @@ def plot_feature_density_comparison(scaled_features: dict, numeric_columns):
                 xytext=(3, 3),
                 textcoords="offset points",
                 color=color,
-                fontsize=6,
+                fontsize=16,
                 bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none", "pad": 1},
             )
         ax.set(title=chart_title, xlabel="Transformed feature value", ylabel="Density")
@@ -122,6 +133,31 @@ def plot_bmi_distribution(diabetes: pd.DataFrame):
         ylabel="Frequency",
     )
     fig_bmi.tight_layout()
+
+
+def plot_class_distribution(diabetes: pd.DataFrame):
+    class_names = {0: "No diabetes", 1: "Prediabetes", 2: "Diabetes"}
+    class_counts = diabetes[TARGET_COLUMN].dropna().value_counts().sort_index()
+    labels = [class_names.get(class_value, str(class_value)) for class_value in class_counts.index]
+    percentages = class_counts / class_counts.sum() * 100
+
+    fig_class, ax_class = plt.subplots(figsize=(8, 6))
+    bars = ax_class.bar(labels, class_counts, color=["steelblue", "darkorange", "firebrick"])
+    ax_class.set(
+        title="Diabetes class distribution",
+        xlabel="Diabetes class",
+        ylabel="Number of rows",
+    )
+    ax_class.set_ylim(0, class_counts.max() * 1.15)
+    for bar, percentage in zip(bars, percentages):
+        ax_class.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{percentage:.1f}%",
+            ha="center",
+            va="bottom",
+        )
+    fig_class.tight_layout()
 
 
 def plot_knn_projection(diabetes: pd.DataFrame):
@@ -171,10 +207,12 @@ def main():
     diabetes = load_diabetes_data()
     diabetes = remove_duplicate_rows(diabetes)
 
-    features = diabetes.drop(columns=TARGET_COLUMN)
+    #features = diabetes.drop(columns=TARGET_COLUMN)
+    features = diabetes[["BMI", "Age"]]
     scaled_features, numeric_columns = build_scaled_feature_views(features)
     plot_feature_density_comparison(scaled_features, numeric_columns)
     plot_bmi_distribution(diabetes)
+    plot_class_distribution(diabetes)
     plot_knn_projection(diabetes)
     plt.show()
 
