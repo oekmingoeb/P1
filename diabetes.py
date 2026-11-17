@@ -14,10 +14,18 @@ from sklearn.metrics import (
     recall_score,
     roc_curve,
 )
-from sklearn.model_selection import StratifiedKFold, TunedThresholdClassifierCV, cross_val_predict, train_test_split, cross_val_score, KFold
+from sklearn.model_selection import (
+    StratifiedKFold,
+    cross_val_predict,
+    train_test_split,
+    cross_val_score,
+    KFold,
+)
 import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import RobustScaler
+from sklearn.metrics import fbeta_score
+
 
 diabetes = pd.read_csv("diabetes_dataset.csv")
 
@@ -37,14 +45,14 @@ X_test, y_test = X_test[y_test != 1], (y_test[y_test != 1] == 2).astype(int)
 scaler = RobustScaler()
 
 # Tilpas scaleren på træningsdata og transformer dem
-features_to_scale = X_train[['BMI', 'GenHlth', 'MentHlth', 'PhysHlth', 'Age', 'Education', 'Income']]
+cols_to_scale = ['BMI', 'GenHlth', 'MentHlth', 'PhysHlth', 'Age', 'Education', 'Income']
 
+X_train_p, X_test_p = X_train.copy(), X_test.copy()
+X_train_p["BMI"] = np.log1p(X_train_p["BMI"])
+X_test_p["BMI"] = np.log1p(X_test_p["BMI"])
 
-log_transformed = np.log1p(X_train[features_to_scale.columns])
-X_test_log_transformed = np.log1p(X_test[features_to_scale.columns])
-
-X_train_scaled = scaler.fit_transform(log_transformed)
-X_test_scaled = scaler.transform(X_test_log_transformed)
+X_train_p[cols_to_scale] = scaler.fit_transform(X_train_p[cols_to_scale])
+X_test_p[cols_to_scale] = scaler.transform(X_test_p[cols_to_scale])
 
 model = {
     "knn": KNeighborsClassifier(n_neighbors=7, weights='distance', p=1),
@@ -52,56 +60,41 @@ model = {
     "rf": RandomForestClassifier(n_estimators=250, min_samples_leaf=10, max_depth = 30, random_state=42)
 }
 
-model["knn"].fit(X_train_scaled, y_train)
-model["logreg"].fit(X_train_scaled, y_train)
-model["rf"].fit(X_train_scaled, y_train)
+model["knn"].fit(X_train_p, y_train)
+model["logreg"].fit(X_train_p, y_train)
+model["rf"].fit(X_train_p, y_train)
+
 
 validation = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+model_thresholds = {"logreg": 0.45, "knn": 0.10, "rf": 0.125}
+model_crossval_predictions = {}
 
-model_tune = TunedThresholdClassifierCV(model["logreg"], cv=validation, scoring="f1_macro")
+for model_name, classifier in model.items():
+    probabilities = cross_val_predict(
+        classifier,
+        X_train_p,
+        y_train,
+        cv=validation,
+        method="predict_proba",
+    )[:, 1]
+    model_crossval_predictions[model_name] = (
+        probabilities >= model_thresholds[model_name]
+    ).astype(int)
+    print(f"{model_name} threshold: {model_thresholds[model_name]:.3f}")
 
-knn_crossval = cross_val_predict(model["knn"], X_train_scaled, y_train, cv=validation)
-logreg_crossval = cross_val_predict(model_tune, X_train_scaled, y_train, cv=validation)
-rf_crossval = cross_val_predict(model["rf"], X_train_scaled, y_train, cv=validation)
-model_tune.fit(X_train_scaled, y_train)
-print("Tuned Logistic Regression threshold:", model_tune.best_threshold_)
-
-logreg_probabilities = cross_val_predict(
-    model["logreg"],
-    X_train_scaled,
-    y_train,
-    cv=validation,
-    method="predict_proba",
-)[:, 1]
-thresholds = [
-    0.400,
-    0.425,
-    0.450,
-    0.475,
-    0.500,
-    0.525,
-    0.550,
-    0.575,
-    0.600,
-]
-print("\nLogistic Regression performance by threshold:")
-print("Threshold  Precision  Recall  F1")
-for threshold in thresholds:
-    threshold_predictions = (logreg_probabilities >= threshold).astype(int)
-    print(
-        f"{threshold:9.3f}  "
-        f"{precision_score(y_train, threshold_predictions, zero_division=0):9.3f}  "
-        f"{recall_score(y_train, threshold_predictions, zero_division=0):6.3f}  "
-        f"{f1_score(y_train, threshold_predictions, zero_division=0):.3f}"
-    )
+knn_crossval = model_crossval_predictions["knn"]
+logreg_crossval = model_crossval_predictions["logreg"]
+rf_crossval = model_crossval_predictions["rf"]
 
 P_knn = precision_score(y_train, knn_crossval, average='macro')
 F1_knn = f1_score(y_train, knn_crossval, average='macro')
+F2_knn = fbeta_score(y_train, knn_crossval, beta=2, average='macro')
 R_knn = recall_score(y_train, knn_crossval, average='macro')
 
 print("KNN Precision:", P_knn)
 print("KNN Recall:", R_knn)
 print("KNN F1 Score:", F1_knn)
+print("KNN F2 Score:", F2_knn)
 print(
     "\nKNN cross-validated training metrics by class:\n",
     classification_report(
@@ -114,8 +107,10 @@ print(
 
 P_logreg = precision_score(y_train, logreg_crossval, average='macro')
 F1_logreg = f1_score(y_train, logreg_crossval, average='macro')
+F2_logreg = fbeta_score(y_train, logreg_crossval, beta=2, average='macro')
 R_logreg = recall_score(y_train, logreg_crossval, average='macro')
-test_predictions = model_tune.predict(X_test_scaled)
+test_probabilities = model["logreg"].predict_proba(X_test_p)[:, 1]
+test_predictions = (test_probabilities >= model_thresholds["logreg"]).astype(int)
 
 print(
     "\nLogistic Regression test metrics by class:\n",
@@ -129,6 +124,7 @@ print(
 print("Logistic Regression Precision:", P_logreg)
 print("Logistic Regression Recall:", R_logreg)
 print("Logistic Regression F1 Score:", F1_logreg)
+print("Logistic Regression F2 Score:", F2_logreg)
 print(
     "\nLogistic Regression cross-validated training metrics by class:\n",
     classification_report(
@@ -141,12 +137,14 @@ print(
 
 P_rf = precision_score(y_train, rf_crossval, average='macro')
 F1_rf = f1_score(y_train, rf_crossval, average='macro')
+F2_rf = fbeta_score(y_train, rf_crossval, beta=2, average='macro')
 R_rf = recall_score(y_train, rf_crossval, average='macro')
 
 
 print("Random Forest Precision:", P_rf)
 print("Random Forest Recall:", R_rf)
 print("Random Forest F1 Score:", F1_rf)
+print("Random Forest F2 Score:", F2_rf)
 print(
     "\nRandom Forest cross-validated training metrics by class:\n",
     classification_report(
@@ -156,55 +154,3 @@ print(
         zero_division=0,
     ),
 )
-
-# ConfusionMatrixDisplay.from_predictions(
-#     y_test,
-#     logreg_test_predictions,
-#     display_labels=["No diabetes", "Diabetes"],
-#     cmap="Blues",
-# )
-# plt.title("Logistic Regression test confusion matrix")
-
-# plot_roc_curves(model, X_test_scaled, y_test)
-plt.show()
-
-
-
-def plot_roc_curves(models, X_test, y_test):
-    classes = np.sort(y_test.unique())
-    y_test_binarized = np.column_stack(
-        [(y_test == class_value).astype(int) for class_value in classes]
-    )
-
-    fig, ax = plt.subplots(figsize=(9, 7))
-    for model_name, classifier in models.items():
-        probabilities = classifier.predict_proba(X_test)
-        all_fpr = np.unique(
-            np.concatenate(
-                [
-                    roc_curve(y_test_binarized[:, index], probabilities[:, index])[0]
-                    for index in range(len(classes))
-                ]
-            )
-        )
-        mean_tpr = np.zeros_like(all_fpr)
-        for index in range(len(classes)):
-            false_positive_rate, true_positive_rate, _ = roc_curve(
-                y_test_binarized[:, index], probabilities[:, index]
-            )
-            mean_tpr += np.interp(all_fpr, false_positive_rate, true_positive_rate)
-        mean_tpr /= len(classes)
-        macro_auc = auc(all_fpr, mean_tpr)
-
-        ax.plot(all_fpr, mean_tpr, linewidth=2, label=f"{model_name} (AUC = {macro_auc:.3f})")
-
-    ax.plot([0, 1], [0, 1], "k--", label="Random classifier")
-    ax.set(
-        title="Multiclass ROC curves",
-        xlabel="False positive rate",
-        ylabel="True positive rate",
-        xlim=(0, 1),
-        ylim=(0, 1.05),
-    )
-    ax.legend(title="Model")
-    fig.tight_layout()
