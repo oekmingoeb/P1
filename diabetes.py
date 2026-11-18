@@ -27,7 +27,7 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.metrics import fbeta_score
 
 
-def model_test_metrics(model_name):
+def model_train_metrics(model_name):
     crossval = model_crossval_predictions[model_name]
 
 
@@ -92,21 +92,27 @@ validation = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
 model_thresholds = {"logreg": 0.45, "knn": 0.10, "rf": 0.125}
 model_crossval_predictions = {}
 
+# for model_name, classifier in model.items():
+#     probabilities = cross_val_predict(
+#         classifier,
+#         X_train_p,
+#         y_train,
+#         cv=validation,
+#         method="predict_proba",
+#     )[:, 1]
+#     model_crossval_predictions[model_name] = (
+#         probabilities >= model_thresholds[model_name]
+#     ).astype(int)
+#     print(f"{model_name} threshold: {model_thresholds[model_name]:.3f}")
+
 for model_name, classifier in model.items():
-    probabilities = cross_val_predict(
-        classifier,
-        X_train_p,
-        y_train,
-        cv=validation,
-        method="predict_proba",
-    )[:, 1]
+    probabilities = classifier.predict_proba(X_train_p)[:, 1]
     model_crossval_predictions[model_name] = (
         probabilities >= model_thresholds[model_name]
     ).astype(int)
-    print(f"{model_name} threshold: {model_thresholds[model_name]:.3f}")
 
 
-model_test_metrics(model_name="knn")
-model_test_metrics(model_name="logreg")
-model_test_metrics(model_name="rf")
+model_train_metrics(model_name="knn")
+model_train_metrics(model_name="logreg")
+model_train_metrics(model_name="rf")
 
