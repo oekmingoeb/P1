@@ -27,6 +27,30 @@ from sklearn.preprocessing import RobustScaler
 from sklearn.metrics import fbeta_score
 
 
+def model_test_metrics(model_name):
+    crossval = model_crossval_predictions[model_name]
+
+
+    P = precision_score(y_train, crossval, average='macro')
+    F1 = f1_score(y_train, crossval, average='macro')
+    F2 = fbeta_score(y_train, crossval, beta=2, average='macro')
+    R = recall_score(y_train, crossval, average='macro')
+
+    print(f"{model_name} Precision:", P)
+    print(f"{model_name} Recall:", R)
+    print(f"{model_name} F1 Score:", F1)
+    print(f"{model_name} F2 Score:", F2)
+    print(
+        f"\n{model_name} cross-validated training metrics by class:\n",
+        classification_report(
+            y_train,
+            crossval,
+            target_names=["No diabetes", "Diabetes"],
+            zero_division=0,
+        ),
+    )
+
+
 diabetes = pd.read_csv("diabetes_dataset.csv")
 
 num_features = diabetes.select_dtypes(include=[np.number]).columns
@@ -64,7 +88,6 @@ model["knn"].fit(X_train_p, y_train)
 model["logreg"].fit(X_train_p, y_train)
 model["rf"].fit(X_train_p, y_train)
 
-
 validation = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
 model_thresholds = {"logreg": 0.45, "knn": 0.10, "rf": 0.125}
 model_crossval_predictions = {}
@@ -82,75 +105,8 @@ for model_name, classifier in model.items():
     ).astype(int)
     print(f"{model_name} threshold: {model_thresholds[model_name]:.3f}")
 
-knn_crossval = model_crossval_predictions["knn"]
-logreg_crossval = model_crossval_predictions["logreg"]
-rf_crossval = model_crossval_predictions["rf"]
 
-P_knn = precision_score(y_train, knn_crossval, average='macro')
-F1_knn = f1_score(y_train, knn_crossval, average='macro')
-F2_knn = fbeta_score(y_train, knn_crossval, beta=2, average='macro')
-R_knn = recall_score(y_train, knn_crossval, average='macro')
+model_test_metrics(model_name="knn")
+model_test_metrics(model_name="logreg")
+model_test_metrics(model_name="rf")
 
-print("KNN Precision:", P_knn)
-print("KNN Recall:", R_knn)
-print("KNN F1 Score:", F1_knn)
-print("KNN F2 Score:", F2_knn)
-print(
-    "\nKNN cross-validated training metrics by class:\n",
-    classification_report(
-        y_train,
-        knn_crossval,
-        target_names=["No diabetes", "Diabetes"],
-        zero_division=0,
-    ),
-)
-
-P_logreg = precision_score(y_train, logreg_crossval, average='macro')
-F1_logreg = f1_score(y_train, logreg_crossval, average='macro')
-F2_logreg = fbeta_score(y_train, logreg_crossval, beta=2, average='macro')
-R_logreg = recall_score(y_train, logreg_crossval, average='macro')
-test_probabilities = model["logreg"].predict_proba(X_test_p)[:, 1]
-test_predictions = (test_probabilities >= model_thresholds["logreg"]).astype(int)
-
-print(
-    "\nLogistic Regression test metrics by class:\n",
-    classification_report(
-        y_test,
-        test_predictions,
-        target_names=["No diabetes", "Diabetes"],
-        zero_division=0,
-    ),
-)
-print("Logistic Regression Precision:", P_logreg)
-print("Logistic Regression Recall:", R_logreg)
-print("Logistic Regression F1 Score:", F1_logreg)
-print("Logistic Regression F2 Score:", F2_logreg)
-print(
-    "\nLogistic Regression cross-validated training metrics by class:\n",
-    classification_report(
-        y_train,
-        logreg_crossval,
-        target_names=["No diabetes", "Diabetes"],
-        zero_division=0,
-    ),
-)
-
-P_rf = precision_score(y_train, rf_crossval, average='macro')
-F1_rf = f1_score(y_train, rf_crossval, average='macro')
-F2_rf = fbeta_score(y_train, rf_crossval, beta=2, average='macro')
-R_rf = recall_score(y_train, rf_crossval, average='macro')
-
-
-print("Random Forest Precision:", P_rf)
-print("Random Forest Recall:", R_rf)
-print("Random Forest F1 Score:", F1_rf)
-print("Random Forest F2 Score:", F2_rf)
-print(
-    "\nRandom Forest cross-validated training metrics by class:\n",
-    classification_report(
-        y_train,
-        rf_crossval,
-        target_names=["No diabetes", "Diabetes"],
-        zero_division=0,
-    ),
-)
