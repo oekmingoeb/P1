@@ -89,7 +89,7 @@ model["logreg"].fit(X_train_p, y_train)
 model["rf"].fit(X_train_p, y_train)
 
 validation = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-model_thresholds = {"logreg": 0.45, "knn": 0.10, "rf": 0.125}
+model_thresholds = {"logreg": 0.425, "knn": 0.01, "rf": 0.125}
 model_crossval_predictions = {}
 
 # for model_name, classifier in model.items():
@@ -112,13 +112,15 @@ for model_name, classifier in model.items():
     ).astype(int)
 
 
-model_train_metrics(model_name="knn")
-model_train_metrics(model_name="logreg")
-model_train_metrics(model_name="rf")
+#model_train_metrics(model_name="knn")
+#model_train_metrics(model_name="logreg")
+#model_train_metrics(model_name="rf")
 
-test_probabilities = model["logreg"].predict_proba(X_test_p)[:, 1]
+test_model = "logreg"
+
+test_probabilities = model[test_model].predict_proba(X_test_p)[:, 1]
 test_predictions = (
-    test_probabilities >= model_thresholds["logreg"]
+    test_probabilities >= model_thresholds[test_model]
 ).astype(int)
 
 test_precision = precision_score(
@@ -134,13 +136,13 @@ test_f2 = fbeta_score(
     y_test, test_predictions, beta=2, average="macro", zero_division=0
 )
 
-print("\nLogistic Regression test metrics:")
+print(f"\n{test_model} test metrics:")
 print("Precision:", test_precision)
 print("Recall:", test_recall)
 print("F1 Score:", test_f1)
 print("F2 Score:", test_f2)
 print(
-    "\nLogistic Regression test metrics by class:\n",
+    f"\n{test_model} test metrics by class:\n",
     classification_report(
         y_test,
         test_predictions,
@@ -155,22 +157,22 @@ ConfusionMatrixDisplay.from_predictions(
     display_labels=["No diabetes", "Diabetes"],
     cmap="Blues",
 )
-plt.title("Logistic Regression test confusion matrix")
+plt.title(f"{test_model} test confusion matrix")
 
 false_positive_rate, true_positive_rate, _ = roc_curve(
     y_test, test_probabilities
 )
-logreg_test_auc = auc(false_positive_rate, true_positive_rate)
+test_auc = auc(false_positive_rate, true_positive_rate)
 plt.figure(figsize=(9, 7))
 plt.plot(
     false_positive_rate,
     true_positive_rate,
-    label=f"Logistic Regression (AUC = {logreg_test_auc:.3f})",
+    label=f"{test_model} (AUC = {test_auc:.3f})",
 )
 plt.plot([0, 1], [0, 1], "k--", label="Random classifier")
 plt.xlabel("False positive rate")
 plt.ylabel("True positive rate")
-plt.title("Logistic Regression test ROC curve")
+plt.title(f"{test_model} test ROC curve")
 plt.legend()
 plt.xlim(0, 1)
 plt.ylim(0, 1.05)
