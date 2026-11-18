@@ -116,3 +116,63 @@ model_train_metrics(model_name="knn")
 model_train_metrics(model_name="logreg")
 model_train_metrics(model_name="rf")
 
+test_probabilities = model["logreg"].predict_proba(X_test_p)[:, 1]
+test_predictions = (
+    test_probabilities >= model_thresholds["logreg"]
+).astype(int)
+
+test_precision = precision_score(
+    y_test, test_predictions, average="macro", zero_division=0
+)
+test_recall = recall_score(
+    y_test, test_predictions, average="macro", zero_division=0
+)
+test_f1 = f1_score(
+    y_test, test_predictions, average="macro", zero_division=0
+)
+test_f2 = fbeta_score(
+    y_test, test_predictions, beta=2, average="macro", zero_division=0
+)
+
+print("\nLogistic Regression test metrics:")
+print("Precision:", test_precision)
+print("Recall:", test_recall)
+print("F1 Score:", test_f1)
+print("F2 Score:", test_f2)
+print(
+    "\nLogistic Regression test metrics by class:\n",
+    classification_report(
+        y_test,
+        test_predictions,
+        target_names=["No diabetes", "Diabetes"],
+        zero_division=0,
+    ),
+)
+
+ConfusionMatrixDisplay.from_predictions(
+    y_test,
+    test_predictions,
+    display_labels=["No diabetes", "Diabetes"],
+    cmap="Blues",
+)
+plt.title("Logistic Regression test confusion matrix")
+
+false_positive_rate, true_positive_rate, _ = roc_curve(
+    y_test, test_probabilities
+)
+logreg_test_auc = auc(false_positive_rate, true_positive_rate)
+plt.figure(figsize=(9, 7))
+plt.plot(
+    false_positive_rate,
+    true_positive_rate,
+    label=f"Logistic Regression (AUC = {logreg_test_auc:.3f})",
+)
+plt.plot([0, 1], [0, 1], "k--", label="Random classifier")
+plt.xlabel("False positive rate")
+plt.ylabel("True positive rate")
+plt.title("Logistic Regression test ROC curve")
+plt.legend()
+plt.xlim(0, 1)
+plt.ylim(0, 1.05)
+plt.tight_layout()
+plt.show()
