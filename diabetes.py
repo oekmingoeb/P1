@@ -5,6 +5,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
+    PrecisionRecallDisplay,
+    RocCurveDisplay,
     accuracy_score,
     auc,
     classification_report,
@@ -16,6 +18,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import (
     StratifiedKFold,
+    TunedThresholdClassifierCV,
     cross_val_predict,
     train_test_split,
     cross_val_score,
@@ -24,31 +27,7 @@ from sklearn.model_selection import (
 import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import RobustScaler
-from sklearn.metrics import fbeta_score
-
-
-def model_train_metrics(model_name):
-    crossval = model_crossval_predictions[model_name]
-
-
-    P = precision_score(y_train, crossval, average='macro')
-    F1 = f1_score(y_train, crossval, average='macro')
-    F2 = fbeta_score(y_train, crossval, beta=2, average='macro')
-    R = recall_score(y_train, crossval, average='macro')
-
-    print(f"{model_name} Precision:", P)
-    print(f"{model_name} Recall:", R)
-    print(f"{model_name} F1 Score:", F1)
-    print(f"{model_name} F2 Score:", F2)
-    print(
-        f"\n{model_name} cross-validated training metrics by class:\n",
-        classification_report(
-            y_train,
-            crossval,
-            target_names=["No diabetes", "Diabetes"],
-            zero_division=0,
-        ),
-    )
+from sklearn.metrics import fbeta_score, make_scorer
 
 
 diabetes = pd.read_csv("diabetes_dataset.csv")
@@ -66,7 +45,9 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.15, random
 X_train, y_train = X_train[y_train != 1], (y_train[y_train != 1] == 2).astype(int)
 X_test, y_test = X_test[y_test != 1], (y_test[y_test != 1] == 2).astype(int)
 
+
 scaler = RobustScaler()
+
 
 # Tilpas scaleren på træningsdata og transformer dem
 cols_to_scale = ['BMI', 'GenHlth', 'MentHlth', 'PhysHlth', 'Age', 'Education', 'Income']
@@ -88,57 +69,49 @@ model["knn"].fit(X_train_p, y_train)
 model["logreg"].fit(X_train_p, y_train)
 model["rf"].fit(X_train_p, y_train)
 
+
 validation = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-model_thresholds = {"logreg": 0.45, "knn": 0.10, "rf": 0.125}
+f2_diabetes = make_scorer(fbeta_score, beta=2)  # F2 for diabetes: recall vægter dobbelt så meget som precision
+model_thresholds = {}
 model_crossval_predictions = {}
 
-# for model_name, classifier in model.items():
-#     probabilities = cross_val_predict(
-#         classifier,
-#         X_train_p,
-#         y_train,
-#         cv=validation,
-#         method="predict_proba",
-#     )[:, 1]
-#     model_crossval_predictions[model_name] = (
-#         probabilities >= model_thresholds[model_name]
-#     ).astype(int)
-#     print(f"{model_name} threshold: {model_thresholds[model_name]:.3f}")
-
 for model_name, classifier in model.items():
-    probabilities = classifier.predict_proba(X_train_p)[:, 1]
-    model_crossval_predictions[model_name] = (
-        probabilities >= model_thresholds[model_name]
-    ).astype(int)
+    print(f"Tuning {model_name} ...")  # hele kørslen tager ca. 10 minutter
+    model_tune = TunedThresholdClassifierCV(classifier, cv=validation, scoring=f2_diabetes)
+    model_crossval_predictions[model_name] = cross_val_predict(model_tune, X_train_p, y_train, cv=validation)
+    model_thresholds[model_name] = model_tune.fit(X_train_p, y_train).best_threshold_
 
+knn_crossval = model_crossval_predictions["knn"]
+logreg_crossval = model_crossval_predictions["logreg"]
+rf_crossval = model_crossval_predictions["rf"]
 
-model_train_metrics(model_name="knn")
-model_train_metrics(model_name="logreg")
-model_train_metrics(model_name="rf")
+P_knn = precision_score(y_train, knn_crossval, average='macro')
+F1_knn = f1_score(y_train, knn_crossval, average='macro')
+F2_knn = fbeta_score(y_train, knn_crossval, beta=2, average='macro')
+R_knn = recall_score(y_train, knn_crossval, average='macro')
 
+print("KNN Threshold:", model_thresholds["knn"])
+print("KNN Precision:", P_knn)
+print("KNN Recall:", R_knn)
+print("KNN F1 Score:", F1_knn)
+print("KNN F2 Score:", F2_knn)
+print(
+    "\nKNN cross-validated training metrics by class:\n",
+    classification_report(
+        y_train,
+        knn_crossval,
+        target_names=["No diabetes", "Diabetes"],
+        zero_division=0,
+    ),
+)
+
+P_logreg = precision_score(y_train, logreg_crossval, average='macro')
+F1_logreg = f1_score(y_train, logreg_crossval, average='macro')
+F2_logreg = fbeta_score(y_train, logreg_crossval, beta=2, average='macro')
+R_logreg = recall_score(y_train, logreg_crossval, average='macro')
 test_probabilities = model["logreg"].predict_proba(X_test_p)[:, 1]
-test_predictions = (
-    test_probabilities >= model_thresholds["logreg"]
-).astype(int)
+test_predictions = (test_probabilities >= model_thresholds["logreg"]).astype(int)
 
-test_precision = precision_score(
-    y_test, test_predictions, average="macro", zero_division=0
-)
-test_recall = recall_score(
-    y_test, test_predictions, average="macro", zero_division=0
-)
-test_f1 = f1_score(
-    y_test, test_predictions, average="macro", zero_division=0
-)
-test_f2 = fbeta_score(
-    y_test, test_predictions, beta=2, average="macro", zero_division=0
-)
-
-print("\nLogistic Regression test metrics:")
-print("Precision:", test_precision)
-print("Recall:", test_recall)
-print("F1 Score:", test_f1)
-print("F2 Score:", test_f2)
 print(
     "\nLogistic Regression test metrics by class:\n",
     classification_report(
@@ -148,31 +121,46 @@ print(
         zero_division=0,
     ),
 )
+print("Logistic Regression Threshold:", model_thresholds["logreg"])
+print("Logistic Regression Precision:", P_logreg)
+print("Logistic Regression Recall:", R_logreg)
+print("Logistic Regression F1 Score:", F1_logreg)
+print("Logistic Regression F2 Score:", F2_logreg)
+print(
+    "\nLogistic Regression cross-validated training metrics by class:\n",
+    classification_report(
+        y_train,
+        logreg_crossval,
+        target_names=["No diabetes", "Diabetes"],
+        zero_division=0,
+    ),
+)
 
-ConfusionMatrixDisplay.from_predictions(
-    y_test,
-    test_predictions,
-    display_labels=["No diabetes", "Diabetes"],
-    cmap="Blues",
-)
-plt.title("Logistic Regression test confusion matrix")
+P_rf = precision_score(y_train, rf_crossval, average='macro')
+F1_rf = f1_score(y_train, rf_crossval, average='macro')
+F2_rf = fbeta_score(y_train, rf_crossval, beta=2, average='macro')
+R_rf = recall_score(y_train, rf_crossval, average='macro')
 
-false_positive_rate, true_positive_rate, _ = roc_curve(
-    y_test, test_probabilities
+
+print("Random Forest Threshold:", model_thresholds["rf"])
+print("Random Forest Precision:", P_rf)
+print("Random Forest Recall:", R_rf)
+print("Random Forest F1 Score:", F1_rf)
+print("Random Forest F2 Score:", F2_rf)
+print(
+    "\nRandom Forest cross-validated training metrics by class:\n",
+    classification_report(
+        y_train,
+        rf_crossval,
+        target_names=["No diabetes", "Diabetes"],
+        zero_division=0,
+    ),
 )
-logreg_test_auc = auc(false_positive_rate, true_positive_rate)
-plt.figure(figsize=(9, 7))
-plt.plot(
-    false_positive_rate,
-    true_positive_rate,
-    label=f"Logistic Regression (AUC = {logreg_test_auc:.3f})",
-)
-plt.plot([0, 1], [0, 1], "k--", label="Random classifier")
-plt.xlabel("False positive rate")
-plt.ylabel("True positive rate")
-plt.title("Logistic Regression test ROC curve")
-plt.legend()
-plt.xlim(0, 1)
-plt.ylim(0, 1.05)
-plt.tight_layout()
+
+# Logistisk regression på testdata: confusion matrix ved den tunede tærskel, ROC- og PR-kurve over alle tærskler
+fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+ConfusionMatrixDisplay.from_predictions(y_test, test_predictions, display_labels=["No diabetes", "Diabetes"], cmap="Blues", ax=axes[0])
+RocCurveDisplay.from_predictions(y_test, test_probabilities, name="Logistic Regression", plot_chance_level=True, ax=axes[1])
+PrecisionRecallDisplay.from_predictions(y_test, test_probabilities, name="Logistic Regression", plot_chance_level=True, ax=axes[2])
+fig.suptitle("Logistic Regression, test data")
 plt.show()
